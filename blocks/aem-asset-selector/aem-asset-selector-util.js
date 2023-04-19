@@ -27,6 +27,7 @@ function load() {
     redirectUrl: window.location.href,
     modalMode: true,
     imsEnvironment,
+    env: imsEnvironment,
   };
   // eslint-disable-next-line no-undef
   const registeredTokenService = PureJSSelectors.registerAssetSelectorsIms(imsProps);
