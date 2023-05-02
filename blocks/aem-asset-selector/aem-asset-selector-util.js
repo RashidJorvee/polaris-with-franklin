@@ -1,6 +1,5 @@
 const IMS_API_KEY = 'franklin';
-const AS_MFE_STAGE = 'https://experience-stage.adobe.com/solutions/CQ-assets-selectors/assets/resources/asset-selectors.js';
-const AS_MFE_PROD = 'https://experience.adobe.com/solutions/CQ-assets-selectors/assets/resources/asset-selectors.js';
+const AS_MFE = 'https://experience.adobe.com/solutions/CQ-assets-selectors/assets/resources/asset-selectors.js';
 const IMS_ENV_STAGE = 'stg1';
 const IMS_ENV_PROD = 'prod';
 
@@ -37,15 +36,13 @@ function load() {
 export function init(cfg, callback) {
   if (cfg.environment.toUpperCase() === 'STAGE') {
     imsEnvironment = IMS_ENV_STAGE;
-    asMFE = AS_MFE_STAGE;
   } else if (cfg.environment.toUpperCase() === 'PROD') {
     imsEnvironment = IMS_ENV_PROD;
-    asMFE = AS_MFE_PROD;
   } else {
     throw new Error('Invalid environment setting!');
   }
 
-  loadScript(asMFE, () => {
+  loadScript(AS_MFE, () => {
     load();
     if (callback) {
       callback();
@@ -58,12 +55,33 @@ function onClose() {
   selectorDialog.close();
 }
 
-async function setToClipboard(rennditionURL) {
+async function setToClipboard(rennditionURL, mimetype) {
   const response = await fetch(rennditionURL);
   if (response.ok) {
-    const blob = await response.blob();
-    // eslint-disable-next-line no-undef
-    const data = [new ClipboardItem({ [blob.type]: blob })];
+    let data;
+    if (mimetype.startsWith('image')) {
+      const blob = await response.blob();
+
+      // eslint-disable-next-line no-undef
+      data = [new ClipboardItem({ [blob.type]: blob })];
+    } else if (mimetype.startsWith('video')) {
+      const block = `
+      <table border='1'>
+        <tr>
+          <td>embed</td>
+        </tr>
+        <tr>
+          <td><a href=${rennditionURL}>${rennditionURL}</a></td>
+        </tr>
+      </table>
+      `;
+
+      data = [
+        new ClipboardItem({ 'text/html': new Blob([block], { type: 'text/html' }) }),
+      ];
+    } else {
+      throw new Error('Unsupported mimetype!');
+    }
     await navigator.clipboard.write(data);
   } else {
     // eslint-disable-next-line no-alert
@@ -72,13 +90,26 @@ async function setToClipboard(rennditionURL) {
 }
 
 function handleSelection(selection) {
-  if (selection[0].reviewStatus !== 'approved') {
+  const selectedAsset = selection[0];
+  if (selectedAsset.reviewStatus !== 'approved') {
     // eslint-disable-next-line no-alert
     alert('Please select an approved asset only!!');
   } else {
-    const deliveryUrl = `https://${selection[0]['repo:repositoryId'].replace('author', 'delivery')}`
-    + `/adobe/dynamicmedia/deliver/${selection[0]['repo:assetId']}/asset.png`;
-    setToClipboard(deliveryUrl);
+    const mimetype = selectedAsset.mimetype;
+    let deliveryUrl;
+    if (mimetype && mimetype.startsWith('image')) {
+      deliveryUrl = `https://${selection[0]['repo:repositoryId'].replace('author', 'delivery')}`
+        + `/adobe/dynamicmedia/deliver/${selection[0]['repo:assetId']}/asset.png`;
+      setToClipboard(deliveryUrl, mimetype);
+    } else if (mimetype && mimetype.startsWith('video')) {
+      // TODO: Determine DASH or HLS
+      deliveryUrl = `https://${selection[0]['repo:repositoryId'].replace('author', 'delivery')}`
+        + `/adobe/dynamicmedia/deliver/${selection[0]['repo:assetId']}/video.mpd`;
+      setToClipboard(deliveryUrl, mimetype);
+    } else {
+      // eslint-disable-next-line no-alert
+      alert('Please select an image or video asset only!!');
+    }
   }
   // onClose();
 }
@@ -90,7 +121,7 @@ function handleNavigateToAsset(asset) {
 
 export async function renderAssetSelectorWithImsFlow(cfg) {
   const assetSelectorProps = {
-    apiKey: 'aem-assets-backend-nr-1',
+    repositoryId: cfg['repository-id'],
     imsOrg: cfg['ims-org-id'],
     onClose,
     handleSelection,
